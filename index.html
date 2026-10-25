@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nail Salon Turn Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Firebase App & Firestore SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-12">
+
+  <!-- TOP HEADER -->
+  <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <div class="bg-indigo-700 p-2.5 rounded-xl shadow-inner">
+          <i class="fa-solid fa-hands-holding-circle text-2xl text-indigo-200"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">Nail Salon Turn Tracker</h1>
+          <p class="text-xs text-indigo-300 flex items-center gap-1">
+            <span id="sync-status" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Cloud Sync · <span id="sync-project">connecting…</span>
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button onclick="resetDailyTurns()" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-rotate-left"></i> Reset Day Turns
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+    <!-- NAVIGATION TABS -->
+    <div class="flex space-x-1 bg-indigo-950/10 p-1.5 rounded-2xl mb-6 max-w-xl border border-indigo-900/10 shadow-inner">
+      <button onclick="switchTab('turn-board')" id="tab-turn-board" class="tab-btn flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow cursor-pointer">
+        <i class="fa-solid fa-list-ol"></i> Turn Queue
+      </button>
+      <button onclick="switchTab('tech-mgmt')" id="tab-tech-mgmt" class="tab-btn flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600 cursor-pointer">
+        <i class="fa-solid fa-users"></i> Technicians
+      </button>
+      <button onclick="switchTab('service-mgmt')" id="tab-service-mgmt" class="tab-btn flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600 cursor-pointer">
+        <i class="fa-solid fa-list-check"></i> Services
+      </button>
+      <button onclick="switchTab('history-log')" id="tab-history-log" class="tab-btn flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 text-slate-600 hover:text-indigo-600 cursor-pointer">
+        <i class="fa-solid fa-clock-rotate-left"></i> Logs
+      </button>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <main>
+      <!-- TAB 1: TURN QUEUE BOARD -->
+      <section id="sec-turn-board" class="tab-content space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- LEFT COLS: ACTIVE QUEUE -->
+          <div class="lg:col-span-2 space-y-6">
+            <!-- NEXT UP HIGHLIGHT CARD -->
+            <div id="next-up-card" class="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+              <div class="absolute -right-6 -bottom-6 opacity-10 text-9xl font-black">#1</div>
+              <div class="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span class="bg-indigo-500/40 text-indigo-200 uppercase tracking-widest text-xs font-bold px-3 py-1 rounded-full border border-indigo-400/30">Next In Line</span>
+                  <h2 id="next-tech-name" class="text-3xl font-extrabold mt-2">--</h2>
+                  <p class="text-indigo-200 text-sm mt-1 flex items-center gap-2">
+                    Total Today: <span id="next-tech-turns" class="font-bold text-white bg-indigo-500/50 px-2 py-0.5 rounded-md">0 Turns</span><span class="ml-2">· Check-in: <span id="next-tech-signin" class="font-bold text-white">--</span></span>
+                  </p>
+                </div>
+                <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                  <p class="text-xs text-indigo-200 mb-2 font-medium">Quick Service Assign</p>
+                  <div class="flex gap-2">
+                    <select id="quick-service-select" class="bg-white/90 text-slate-800 text-sm font-medium rounded-xl px-3 py-2 border-none outline-none focus:ring-2 focus:ring-indigo-400">
+                    </select>
+                    <button onclick="assignServiceToNext()" class="bg-emerald-500 hover:bg-emerald-400 text-white font-semibold text-sm px-4 py-2 rounded-xl transition shadow-lg flex items-center gap-1.5 cursor-pointer">
+                      <i class="fa-solid fa-check"></i> Assign
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- QUEUE TABLE / CARDS -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-arrow-down-1-9 text-indigo-600"></i> Turn Queue Standings
+                </h3>
+                <span class="text-xs text-slate-500 font-medium">Sorted by: Round (whole turns) → Check-in time</span>
+              </div>
+              <div id="queue-list" class="space-y-3">
+                <!-- Tech Queue Items rendered here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT COL: OFF-QUEUE & QUICK REFERENCE -->
+          <div class="space-y-6">
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80">
+              <h3 class="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-circle-pause text-amber-500"></i> Techs On Break / Inactive
+              </h3>
+              <div id="inactive-techs-list" class="space-y-2 text-sm text-slate-500">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- SERVICE CATALOG QUICK REFERENCE -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80">
+              <h3 class="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-scissors text-indigo-600"></i> Service Turn Rates
+              </h3>
+              <div id="service-quick-ref" class="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: TECHNICIAN MANAGEMENT -->
+      <section id="sec-tech-mgmt" class="tab-content hidden space-y-6">
+        <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Technician Management</h2>
+            <p class="text-slate-500 text-sm">Add, remove, toggle status, or adjust technician details</p>
+          </div>
+          <button onclick="openTechModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-plus"></i> Add Technician
+          </button>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
+                  <th class="p-4 font-semibold">Technician Name</th>
+                  <th class="p-4 font-semibold">Today's Turns</th>
+                  <th class="p-4 font-semibold">Check-in Time</th>
+                  <th class="p-4 font-semibold">Status</th>
+                  <th class="p-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tech-table-body" class="divide-y divide-slate-100 text-sm">
+                <!-- Tech rows rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: SERVICE MANAGEMENT -->
+      <section id="sec-service-mgmt" class="tab-content hidden space-y-6">
+        <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Service Management</h2>
+            <p class="text-slate-500 text-sm">Configure services and their corresponding turn values</p>
+          </div>
+          <button onclick="openServiceModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-plus"></i> Add Service
+          </button>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
+                  <th class="p-4 font-semibold">Service Name</th>
+                  <th class="p-4 font-semibold">Turn Value</th>
+                  <th class="p-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="service-table-body" class="divide-y divide-slate-100 text-sm">
+                <!-- Service rows rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: HISTORY LOGS -->
+      <section id="sec-history-log" class="tab-content hidden space-y-6">
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Daily Service Log</h2>
+            <p class="text-slate-500 text-sm">Review assigned services for today and revert mistakes</p>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <label for="log-tech-filter" class="text-xs font-semibold text-slate-600">Filter Tech:</label>
+              <select id="log-tech-filter" onchange="renderHistoryTable()" class="bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                <option value="ALL">All Technicians</option>
+              </select>
+            </div>
+            <button onclick="clearHistoryLog()" class="text-rose-600 hover:text-rose-700 text-xs font-semibold px-3 py-2 rounded-xl border border-rose-200 hover:border-rose-300 transition cursor-pointer">
+              Clear History
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 uppercase text-xs tracking-wider border-b border-slate-200">
+                  <th class="p-4 font-semibold">Time</th>
+                  <th class="p-4 font-semibold">Technician</th>
+                  <th class="p-4 font-semibold">Service Rendered</th>
+                  <th class="p-4 font-semibold">Turns Added</th>
+                  <th class="p-4 font-semibold text-right">Undo Action</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body" class="divide-y divide-slate-100 text-sm">
+                <!-- History items rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL: ADD/EDIT TECHNICIAN -->
+  <div id="tech-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
+      <h3 id="tech-modal-title" class="text-lg font-bold text-slate-800">Add New Technician</h3>
+      <input type="hidden" id="tech-modal-id">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Technician Name</label>
+        <input type="text" id="tech-modal-name" class="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Jessica, Sarah...">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Initial Today's Turns</label>
+        <input type="number" step="0.5" id="tech-modal-turns" class="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" value="0">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Check-in Time (Sign-in)</label>
+        <input type="time" id="tech-modal-signin" class="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <div class="flex justify-end space-x-3 pt-2">
+        <button onclick="closeTechModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-semibold rounded-xl transition cursor-pointer">Cancel</button>
+        <button onclick="saveTechModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition cursor-pointer">Save Technician</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD/EDIT SERVICE -->
+  <div id="service-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
+      <h3 id="service-modal-title" class="text-lg font-bold text-slate-800">Add New Service</h3>
+      <input type="hidden" id="service-modal-id">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Service Name</label>
+        <input type="text" id="service-modal-name" class="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Gel Manicure...">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Turn Value</label>
+        <input type="number" step="0.5" min="0.5" id="service-modal-turns" class="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" value="1">
+      </div>
+      <div class="flex justify-end space-x-3 pt-2">
+        <button onclick="closeServiceModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-semibold rounded-xl transition cursor-pointer">Cancel</button>
+        <button onclick="saveServiceModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition cursor-pointer">Save Service</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white text-sm px-4 py-3 rounded-2xl shadow-xl transition-all opacity-0 translate-y-4 pointer-events-none z-50 flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-message">Action successful</span>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAN1bWeGMs1lzgyyx-RHWwB5vro3Gfri_Q",
+      authDomain: "turntracker-1ab68.firebaseapp.com",
+      projectId: "turntracker-1ab68",
+      storageBucket: "turntracker-1ab68.appspot.com",
+      messagingSenderId: "537033521288",
+      appId: "1:537033521288:web:ed42fa5013efe85695073d"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    document.getElementById('sync-project').innerText = firebaseConfig.projectId;
+
+    const defaultTechs = [
+      { id: 't1', name: 'Jenny', turns: 0, status: 'break', lastUpdated: 1000 },
+      { id: 't2', name: 'Hannah', turns: 0, status: 'break', lastUpdated: 2000 },
+      { id: 't3', name: 'Kevin', turns: 0, status: 'break', lastUpdated: 3000 },
+      { id: 't4', name: 'Lisa', turns: 0, status: 'break', lastUpdated: 4000 }
+    ];
+
+    const defaultServices = [
+      { id: 's1', name: 'Basic Manicure', turns: 0.5 },
+      { id: 's2', name: 'Gel Manicure', turns: 1.0 },
+      { id: 's3', name: 'Full Set Acrylics', turns: 1.0 },
+      { id: 's4', name: 'Deluxe Pedicure', turns: 1.0 },
+      { id: 's5', name: 'Gel Pedicure + Manicure Combo', turns: 1.5 },
+      { id: 's6', name: 'Full Set + Deluxe Pedi Spa', turns: 2.0 }
+    ];
+
+    let techs = [];
+    let services = [];
+    let logs = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      db.collection("nail_salon").doc("shared_state").onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          techs = normalizeTechs(data.techs || defaultTechs);
+          services = data.services || defaultServices;
+          logs = data.logs || [];
+        } else {
+          techs = normalizeTechs(defaultTechs);
+          services = defaultServices;
+          logs = [];
+          saveState();
+        }
+        renderAll();
+      }, (error) => {
+        console.error("Firebase sync error:", error);
+        document.getElementById('sync-status').classList.remove('bg-emerald-400');
+        document.getElementById('sync-status').classList.add('bg-rose-500');
+      });
+    });
+
+    function saveState() {
+      db.collection("nail_salon").doc("shared_state").set({
+        techs: techs,
+        services: services,
+        logs: logs,
+        lastUpdated: Date.now()
+      }).catch((error) => {
+        console.error("Error saving state to cloud:", error);
+      });
+    }
+
+    // ---------- Helpers ----------
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function fmtTime(ms) {
+      return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    function toInput(ms) {
+      const d = new Date(ms);
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    function fromInput(v) {
+      const d = new Date();
+      if (!v) return d.getTime();
+      const [h, m] = v.split(':').map(Number);
+      d.setHours(h, m, 0, 0);
+      return d.getTime();
+    }
+    // Old data used "lastUpdated" as the arrival time; migrate it to "signIn".
+    function normalizeTechs(list) {
+      return list.map((t, i) => ({ ...t, signIn: t.signIn != null ? t.signIn : (t.lastUpdated != null ? t.lastUpdated : Date.now() + i) }));
+    }
+
+    // ---------- QUEUE ALGORITHM ----------
+    // Rule 1: group by turn round = Math.floor(turns)  (0 and 0.5 are round 0; 1.0 and 1.5 are round 1).
+    // Rule 2: inside the same round, earlier Check-in (signIn) is always first.
+    //         Turns are never used as a tie-breaker, so a 0.5 turn does not push the tech back.
+    function getSortedActiveTechs() {
+      return techs
+        .filter(t => t.status === 'active')
+        .sort((a, b) => {
+          const roundA = Math.floor(a.turns + 1e-9);
+          const roundB = Math.floor(b.turns + 1e-9);
+          if (roundA !== roundB) return roundA - roundB;
+          if (a.signIn !== b.signIn) return a.signIn - b.signIn;
+          return String(a.id).localeCompare(String(b.id));
+        });
+    }
+
+    function updateSignIn(techId, value) {
+      const tech = techs.find(t => t.id === techId);
+      if (!tech || !value) return;
+      tech.signIn = fromInput(value);
+      saveState();
+      renderAll();
+      showToast(`${tech.name} check-in set to ${fmtTime(tech.signIn)}`);
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`sec-${tabId}`).classList.remove('hidden');
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white', 'shadow');
+        btn.classList.add('text-slate-600');
+      });
+      const activeBtn = document.getElementById(`tab-${tabId}`);
+      activeBtn.classList.add('bg-indigo-600', 'text-white', 'shadow');
+      activeBtn.classList.remove('text-slate-600');
+    }
+
+    function renderAll() {
+      renderQueue();
+      renderTechMgmtTable();
+      renderServiceMgmtTable();
+      renderHistoryTable();
+      renderQuickRef();
+      updateLogFilterOptions();
+    }
+
+    function renderQueue() {
+      const activeTechs = getSortedActiveTechs();
+      const nextUpCard = document.getElementById('next-up-card');
+      const queueList = document.getElementById('queue-list');
+      const quickServiceSelect = document.getElementById('quick-service-select');
+      const inactiveTechsList = document.getElementById('inactive-techs-list');
+
+      quickServiceSelect.innerHTML = services.map(s => `
+        <option value="${s.id}">${esc(s.name)} (${s.turns} Turn${s.turns > 1 ? 's' : ''})</option>
+      `).join('');
+
+      if (activeTechs.length > 0) {
+        const nextTech = activeTechs[0];
+        document.getElementById('next-tech-name').innerText = nextTech.name;
+        document.getElementById('next-tech-turns').innerText = `${nextTech.turns} Turns`;
+        document.getElementById('next-tech-signin').innerText = fmtTime(nextTech.signIn);
+        nextUpCard.classList.remove('opacity-50');
+      } else {
+        document.getElementById('next-tech-name').innerText = 'No Active Techs';
+        document.getElementById('next-tech-turns').innerText = '0 Turns';
+        document.getElementById('next-tech-signin').innerText = '--';
+      }
+
+      queueList.innerHTML = '';
+      if (activeTechs.length === 0) {
+        queueList.innerHTML = `<div class="p-8 text-center text-slate-400 font-medium">No technicians currently in queue. Click "Add to Queue" on the right as techs arrive for the day.</div>`;
+      } else {
+        activeTechs.forEach((tech, index) => {
+          const isNext = index === 0;
+          const card = document.createElement('div');
+          card.className = `p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+            isNext 
+              ? 'bg-indigo-50/60 border-indigo-200 ring-2 ring-indigo-500/20 shadow-sm' 
+              : 'bg-slate-50/80 border-slate-200/80 hover:bg-slate-100/80'
+          }`;
+
+          card.innerHTML = `
+            <div class="flex items-center gap-3">
+              <span class="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                isNext ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+              }">${index + 1}</span>
+              <div>
+                <div class="font-bold text-slate-800 flex items-center gap-2">
+                  ${esc(tech.name)}
+                  ${isNext ? '<span class="bg-indigo-100 text-indigo-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Next Up</span>' : ''}
+                </div>
+                <div class="text-xs text-slate-500 font-medium flex flex-wrap items-center gap-x-3 gap-y-1"><span>Check-in: <span class="text-slate-800 font-bold">${fmtTime(tech.signIn)}</span></span><span>Total: <span class="text-slate-800 font-bold">${tech.turns} Turns</span></span><span class="bg-slate-200 text-slate-600 px-1.5 rounded">Round ${Math.floor(tech.turns + 1e-9)}</span></div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex bg-white rounded-xl border border-slate-200 p-1 shadow-sm">
+                <select id="select-svc-${tech.id}" class="text-xs font-medium text-slate-700 bg-transparent px-2 py-1 outline-none">
+                  ${services.map(s => `<option value="${s.id}">${esc(s.name)} (+${s.turns})</option>`).join('')}
+                </select>
+                <button onclick="assignServiceToTech('${tech.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1 rounded-lg transition cursor-pointer">
+                  Add Service
+                </button>
+              </div>
+
+              <div class="flex items-center space-x-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                <button onclick="adjustTurns('${tech.id}', -0.5)" class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 rounded text-slate-600 font-bold text-xs cursor-pointer" title="Minus 0.5 turn">-0.5</button>
+                <button onclick="adjustTurns('${tech.id}', 0.5)" class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 rounded text-slate-600 font-bold text-xs cursor-pointer" title="Add 0.5 turn">+0.5</button>
+              </div>
+
+              <button onclick="toggleTechStatus('${tech.id}')" class="text-xs bg-slate-200 hover:bg-amber-100 hover:text-amber-700 text-slate-600 px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer" title="Put on Break">
+                <i class="fa-solid fa-pause"></i>
+              </button>
+            </div>
+          `;
+          queueList.appendChild(card);
+        });
+      }
+
+      const inactiveTechs = techs.filter(t => t.status === 'break');
+      inactiveTechsList.innerHTML = inactiveTechs.length === 0 
+        ? `<div class="text-xs text-slate-400 italic">All technicians are active in queue.</div>` 
+        : inactiveTechs.map(t => `
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200/60">
+              <div>
+                <div class="font-semibold text-slate-700 text-xs">${esc(t.name)}</div>
+                <div class="text-[10px] text-slate-400">${t.turns} Turns Today · Last check-in ${fmtTime(t.signIn)}</div>
+              </div>
+              <button onclick="toggleTechStatus('${t.id}')" class="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer">
+                <i class="fa-solid fa-play text-[10px]"></i> Add to Queue
+              </button>
+            </div>
+          `).join('');
+    }
+
+    function renderTechMgmtTable() {
+      const tbody = document.getElementById('tech-table-body');
+      tbody.innerHTML = techs.map(t => `
+        <tr class="hover:bg-slate-50/80 transition">
+          <td class="p-4 font-semibold text-slate-800">${esc(t.name)}</td>
+          <td class="p-4"><span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg font-bold text-xs">${t.turns} Turns</span></td>
+          <td class="p-4"><input type="time" value="${toInput(t.signIn)}" onchange="updateSignIn('${t.id}', this.value)" class="border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"></td>
+          <td class="p-4">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+              t.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+            }">
+              <span class="w-1.5 h-1.5 rounded-full ${t.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+              ${t.status === 'active' ? 'Active in Queue' : 'Off Queue / Break'}
+            </span>
+          </td>
+          <td class="p-4 text-right space-x-2">
+            <button onclick="toggleTechStatus('${t.id}')" class="text-amber-600 hover:text-amber-800 font-semibold text-xs cursor-pointer"><i class="fa-solid fa-right-left"></i> ${t.status === 'active' ? 'Break' : 'Check in'}</button>
+            <button onclick="openTechModal('${t.id}')" class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs cursor-pointer"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button onclick="deleteTech('${t.id}')" class="text-rose-600 hover:text-rose-800 font-semibold text-xs cursor-pointer"><i class="fa-solid fa-trash"></i> Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderServiceMgmtTable() {
+      const tbody = document.getElementById('service-table-body');
+      tbody.innerHTML = services.map(s => `
+        <tr class="hover:bg-slate-50/80 transition">
+          <td class="p-4 font-semibold text-slate-800">${esc(s.name)}</td>
+          <td class="p-4"><span class="bg-slate-100 text-slate-800 px-2.5 py-1 rounded-lg font-bold text-xs">${s.turns} Turn${s.turns > 1 ? 's' : ''}</span></td>
+          <td class="p-4 text-right space-x-2">
+            <button onclick="openServiceModal('${s.id}')" class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs cursor-pointer"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button onclick="deleteService('${s.id}')" class="text-rose-600 hover:text-rose-800 font-semibold text-xs cursor-pointer"><i class="fa-solid fa-trash"></i> Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function updateLogFilterOptions() {
+      const filterSelect = document.getElementById('log-tech-filter');
+      const selectedVal = filterSelect.value || 'ALL';
+      filterSelect.innerHTML = `<option value="ALL">All Technicians</option>` +
+        techs.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+      filterSelect.value = selectedVal;
+    }
+
+    function renderHistoryTable() {
+      const tbody = document.getElementById('history-table-body');
+      const selectedTechId = document.getElementById('log-tech-filter')?.value || 'ALL';
+
+      let displayLogs = logs.slice().reverse();
+      if (selectedTechId !== 'ALL') {
+        displayLogs = displayLogs.filter(l => l.techId === selectedTechId);
+      }
+
+      if (displayLogs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400 font-medium">No services recorded for this selection.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = displayLogs.map(log => `
+        <tr class="hover:bg-slate-50/80 transition">
+          <td class="p-4 text-xs font-medium text-slate-500">${log.time}</td>
+          <td class="p-4 font-semibold text-slate-800">${esc(log.techName)}</td>
+          <td class="p-4 text-slate-700">${esc(log.serviceName)}</td>
+          <td class="p-4"><span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg font-bold text-xs">+${log.turnsAdded}</span></td>
+          <td class="p-4 text-right">
+            ${log.undone
+              ? `<span class="text-xs text-slate-400 italic">Reverted</span>`
+              : `<button onclick="undoLog('${log.id}')" class="text-rose-600 hover:text-rose-800 font-semibold text-xs px-2.5 py-1 bg-rose-50 rounded-lg hover:bg-rose-100 transition cursor-pointer"><i class="fa-solid fa-rotate-left"></i> Undo</button>`
+            }
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderQuickRef() {
+      const ref = document.getElementById('service-quick-ref');
+      ref.innerHTML = services.map(s => `
+        <div class="py-2 flex justify-between items-center text-xs">
+          <span class="font-medium text-slate-700">${esc(s.name)}</span>
+          <span class="font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded">${s.turns} Turn</span>
+        </div>
+      `).join('');
+    }
+
+    function assignServiceToNext() {
+      const activeTechs = getSortedActiveTechs();
+      if (activeTechs.length === 0) {
+        showToast('No active technicians in queue!');
+        return;
+      }
+      const techId = activeTechs[0].id;
+      const serviceId = document.getElementById('quick-service-select').value;
+      executeServiceAssignment(techId, serviceId);
+    }
+
+    function assignServiceToTech(techId) {
+      const serviceId = document.getElementById(`select-svc-${techId}`).value;
+      executeServiceAssignment(techId, serviceId);
+    }
+
+    function executeServiceAssignment(techId, serviceId) {
+      const tech = techs.find(t => t.id === techId);
+      const service = services.find(s => s.id === serviceId);
+      if (!tech || !service) return;
+
+      tech.turns = parseFloat((tech.turns + service.turns).toFixed(1));
+
+      logs.push({
+        id: 'log_' + Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        techId: tech.id,
+        techName: tech.name,
+        serviceName: service.name,
+        turnsAdded: service.turns,
+        undone: false
+      });
+
+      saveState();
+      renderAll();
+      showToast(`Assigned ${service.name} (+${service.turns} turn) to ${tech.name}`);
+    }
+
+    function adjustTurns(techId, amount) {
+      const tech = techs.find(t => t.id === techId);
+      if (!tech) return;
+
+      tech.turns = Math.max(0, parseFloat((tech.turns + amount).toFixed(1)));
+
+      saveState();
+      renderAll();
+      showToast(`Adjusted ${tech.name}'s turns by ${amount > 0 ? '+' + amount : amount}`);
+    }
+
+    function toggleTechStatus(techId) {
+      const tech = techs.find(t => t.id === techId);
+      if (!tech) return;
+
+      tech.status = tech.status === 'active' ? 'break' : 'active';
+      if (tech.status === 'active') {
+        // Luôn lưu mốc thời gian mới khi cho thợ vào queue để xếp hàng chuẩn xác
+        tech.signIn = Date.now();
+      }
+
+      saveState();
+      renderAll();
+      showToast(`${tech.name} is now ${tech.status === 'active' ? 'Active in queue' : 'Off Queue / On Break'}`);
+    }
+
+    function resetDailyTurns() {
+      if (confirm('Are you sure you want to start a new day? This will reset all turns to 0, clear history logs, and clear the queue.')) {
+        const now = Date.now();
+        techs.forEach((t, index) => {
+          t.turns = 0;
+          t.status = 'break';
+          t.signIn = now + index * 10;
+        });
+        logs = [];
+        saveState();
+        renderAll();
+        showToast('New day started! Queue is empty. Click "Add to Queue" as techs arrive.');
+      }
+    }
+
+    function undoLog(logId) {
+      const log = logs.find(l => l.id === logId);
+      if (!log || log.undone) return;
+      const tech = techs.find(t => t.id === log.techId);
+      if (tech) {
+        tech.turns = Math.max(0, parseFloat((tech.turns - log.turnsAdded).toFixed(1)));
+      }
+
+      log.undone = true;
+      saveState();
+      renderAll();
+      showToast(`Undid ${log.serviceName} for ${log.techName}`);
+    }
+
+    function clearHistoryLog() {
+      if (confirm('Clear history logs for today?')) {
+        logs = [];
+        saveState();
+        renderHistoryTable();
+        showToast('History log cleared.');
+      }
+    }
+
+    function openTechModal(techId = null) {
+      const modal = document.getElementById('tech-modal');
+      const title = document.getElementById('tech-modal-title');
+      const idInput = document.getElementById('tech-modal-id');
+      const nameInput = document.getElementById('tech-modal-name');
+      const turnsInput = document.getElementById('tech-modal-turns');
+      if (techId) {
+        const tech = techs.find(t => t.id === techId);
+        title.innerText = 'Edit Technician';
+        idInput.value = tech.id;
+        nameInput.value = tech.name;
+        turnsInput.value = tech.turns;
+        document.getElementById('tech-modal-signin').value = toInput(tech.signIn);
+      } else {
+        title.innerText = 'Add New Technician';
+        idInput.value = '';
+        nameInput.value = '';
+        turnsInput.value = '0';
+        document.getElementById('tech-modal-signin').value = toInput(Date.now());
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeTechModal() {
+      document.getElementById('tech-modal').classList.add('hidden');
+    }
+
+    function saveTechModal() {
+      const id = document.getElementById('tech-modal-id').value;
+      const name = document.getElementById('tech-modal-name').value.trim();
+      const turns = parseFloat(document.getElementById('tech-modal-turns').value) || 0;
+      const signIn = fromInput(document.getElementById('tech-modal-signin').value);
+      if (!name) {
+        alert('Please enter a technician name');
+        return;
+      }
+      if (id) {
+        const tech = techs.find(t => t.id === id);
+        if (tech) {
+          tech.name = name;
+          tech.turns = turns;
+          tech.signIn = signIn;
+        }
+      } else {
+        techs.push({
+          id: 't_' + Date.now(),
+          signIn: signIn,
+          name: name,
+          turns: turns,
+          status: 'break',
+          lastUpdated: Date.now()
+        });
+      }
+      saveState();
+      renderAll();
+      closeTechModal();
+      showToast('Technician saved successfully');
+    }
+
+    function deleteTech(techId) {
+      if (confirm('Delete this technician permanently?')) {
+        techs = techs.filter(t => t.id !== techId);
+        saveState();
+        renderAll();
+        showToast('Technician removed');
+      }
+    }
+
+    function openServiceModal(serviceId = null) {
+      const modal = document.getElementById('service-modal');
+      const title = document.getElementById('service-modal-title');
+      const idInput = document.getElementById('service-modal-id');
+      const nameInput = document.getElementById('service-modal-name');
+      const turnsInput = document.getElementById('service-modal-turns');
+      if (serviceId) {
+        const service = services.find(s => s.id === serviceId);
+        title.innerText = 'Edit Service';
+        idInput.value = service.id;
+        nameInput.value = service.name;
+        turnsInput.value = service.turns.toString();
+      } else {
+        title.innerText = 'Add New Service';
+        idInput.value = '';
+        nameInput.value = '';
+        turnsInput.value = '1.0';
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeServiceModal() {
+      document.getElementById('service-modal').classList.add('hidden');
+    }
+
+    function saveServiceModal() {
+      const id = document.getElementById('service-modal-id').value;
+      const name = document.getElementById('service-modal-name').value.trim();
+      const turns = Math.round(parseFloat(document.getElementById('service-modal-turns').value) * 2) / 2;
+      if (!(turns > 0)) {
+        alert('Turn value must be 0.5 or higher');
+        return;
+      }
+      if (!name) {
+        alert('Please enter a service name');
+        return;
+      }
+      if (id) {
+        const service = services.find(s => s.id === id);
+        if (service) {
+          service.name = name;
+          service.turns = turns;
+        }
+      } else {
+        services.push({
+          id: 's_' + Date.now(),
+          name: name,
+          turns: turns
+        });
+      }
+      saveState();
+      renderAll();
+      closeServiceModal();
+      showToast('Service saved successfully');
+    }
+
+    function deleteService(serviceId) {
+      if (confirm('Delete this service rate?')) {
+        services = services.filter(s => s.id !== serviceId);
+        saveState();
+        renderAll();
+        showToast('Service removed');
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').innerText = message;
+      toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
