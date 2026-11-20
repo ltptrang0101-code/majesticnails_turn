@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { font-family: 'Inter Variable', 'Inter', system-ui, sans-serif; }
+
+.service-box {
+  min-height: 4.5rem;
+}
